@@ -219,6 +219,66 @@ app.get('/api/check-order-dropship', async (req, res) => {
   }
 });
 
+/**
+ * API route to check an order for dropship vendors.
+ *
+ * POST /api/check-order-dropship
+ * Expects a JSON order object in the request body with a "line_items" array.
+ * Processes each line_item to fetch vendor data concurrently.
+ * Returns a JSON response with the vendor names and a flag indicating if any vendor is a dropship vendor.
+ */
+app.post('/api/check-order-dropship', async (req, res) => {
+  console.log("Received request at /api/check-order-dropship");
+  
+  // Validate the order object.
+  const order = req.body;
+  if (!order || !Array.isArray(order.line_items) || order.line_items.length === 0) {
+    console.error("Invalid order_object: missing or empty 'line_items'.");
+    return res.status(400).json({ error: "Invalid order_object. Provide at least one line_item." });
+  }
+  
+  console.log(`Processing order with ${order.line_items.length} line items from ${req.protocol}://${req.get('host')}`);
+
+  // Retrieve vendor credentials using the request hostname.
+  const { subdomain, apiKey } = getVendorCredentials(req);
+
+  try {
+    // Process each line item concurrently.
+    const vendorNamesArrays = await Promise.all(order.line_items.map(async (lineItem) => {
+      try {
+        const response = await fetchVendorData(lineItem.origin_product_id, subdomain, apiKey);
+        if (!response.ok) {
+          console.warn(`Fetch failed for line item ${lineItem.origin_product_id} with status ${response.status}`);
+          return []; // Return an empty array if fetch fails.
+        }
+        const vendorData = await response.json();
+        if (!vendorData || !Array.isArray(vendorData.vendors) || vendorData.vendors.length === 0) {
+          console.warn(`No vendor data returned for line item ${lineItem.origin_product_id}`);
+          return [];
+        }
+        // Map vendor data to vendor names.
+        return vendorData.vendors.map(vendor => vendor.name);
+      } catch (err) {
+        console.error(`Error processing line item ${lineItem.origin_product_id}:`, err);
+        return [];
+      }
+    }));
+
+    // Flatten the array of vendor names.
+    const vendorNames = vendorNamesArrays.flat();
+    // Check if any vendor is in the dropship vendors list.
+    const orderContainsDropshipVendors = vendorNames.some(name => dropShipVendors.includes(name));
+
+    console.log("Order processed successfully. Vendor names:", vendorNames);
+    console.log("Contains dropship vendors?", orderContainsDropshipVendors);
+
+    return res.status(200).json({ vendorNames, orderContainsDropshipVendors });
+  } catch (error) {
+    console.error('Server error while processing order:', error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // Start the server.
 app.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}. Access it at http://localhost:${PORT}`);
