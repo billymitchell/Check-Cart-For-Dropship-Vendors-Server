@@ -125,12 +125,8 @@ async function fetchVendorData(itemId, subdomain, apiKey) {
  * Returns vendor names and a flag indicating if any vendor is a dropship vendor.
  */
 app.get('/api/check-order-dropship', async (req, res) => {
-  let order;
-  try {
-    order = JSON.parse(req.query.order_object);
-  } catch (err) {
-    return res.status(400).json({ error: "Invalid or missing order_object in query parameters." });
-  }
+  // Get the order_object from the body (instead of req.query)
+  const order = req.body.order_object;
 
   if (!order || !Array.isArray(order.line_items) || order.line_items.length === 0) {
     return res.status(400).json({ error: "Invalid order_object. Provide at least one line_item." });
