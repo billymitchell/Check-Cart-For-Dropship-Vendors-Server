@@ -1,7 +1,8 @@
 // Import required modules.
 const express = require('express');        // For setting up the server and routes.
 const path = require('path');              // For handling file paths.
-require('dotenv').config();                // Load environment variables from .env file.
+require('dotenv').config();
+const cors = require('cors');
 
 // Instantiate the Express application.
 const app = express();
@@ -9,6 +10,46 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware to parse JSON request bodies.
 app.use(express.json());
+
+// Load and process the store lookup table statically.
+const rawStoreLookup = require('./store-lookup-table.json');
+const storeLookupTable = rawStoreLookup.map(store => {
+  if (store.Subdomain) {
+    return {
+      ...store,
+      "API Key": process.env[store.Subdomain] || `default-${store.Subdomain}`
+    };
+  }
+  return store;
+});
+
+// Build the list of allowed origins based on the store lookup table.
+const allowedOrigins = storeLookupTable.reduce((acc, store) => {
+  if (store.Subdomain) {
+    // Format subdomain to a full origin; adjust protocol if needed.
+    acc.push(`https://${store.Subdomain}.mybrightsites.com`);
+  }
+  if (store["Custom URL"]) {
+    acc.push(store["Custom URL"]);
+  }
+  return acc;
+}, []);
+
+console.log("Allowed origins:", allowedOrigins);
+
+// Enable CORS with dynamic origin validation.
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'), false);
+    }
+  }
+}));
 
 // Define an array of vendor names that are considered dropship vendors.
 const dropShipVendors = [
@@ -22,19 +63,6 @@ const dropShipVendors = [
   "Power Sales",
   "Winning Edge"
 ];
-
-// Load and process the store lookup table statically.
-// This automatically parses the JSON file and adds an "API Key" property where applicable.
-const rawStoreLookup = require('./store-lookup-table.json');
-const storeLookupTable = rawStoreLookup.map(store => {
-  if (store.Subdomain) {
-    return {
-      ...store,
-      "API Key": process.env[store.Subdomain] || `default-${store.Subdomain}`
-    };
-  }
-  return store;
-});
 
 /**
  * Determines the subdomain from the provided hostname.
