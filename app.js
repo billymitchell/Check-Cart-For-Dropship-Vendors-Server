@@ -125,8 +125,8 @@ async function fetchVendorData(itemId, subdomain, apiKey) {
  * Returns vendor names and a flag indicating if any vendor is a dropship vendor.
  */
 app.get('/api/check-order-dropship', async (req, res) => {
-  // Get the order_object from the body (instead of req.query)
-  const order = req.body.order_object;
+  // Since the raw body is the order object, we can do:
+  const order = req.body;
 
   if (!order || !Array.isArray(order.line_items) || order.line_items.length === 0) {
     return res.status(400).json({ error: "Invalid order_object. Provide at least one line_item." });
@@ -143,14 +143,12 @@ app.get('/api/check-order-dropship', async (req, res) => {
       try {
         const response = await fetchVendorData(lineItem.id, subdomain, apiKey);
         if (!response.ok) {
-          // Skip on error for this line item.
-          return [];
+          return []; // Skip on error for this line item.
         }
         const vendorData = await response.json();
         if (!vendorData || !vendorData.vendors || vendorData.vendors.length === 0) {
           return [];
         }
-        // Return all vendor names from this line item's data.
         return vendorData.vendors.map(vendor => vendor.name);
       } catch (err) {
         console.error(`Error processing line item ${lineItem.id}:`, err);
@@ -163,9 +161,7 @@ app.get('/api/check-order-dropship', async (req, res) => {
     // Determine if any vendor name is on the dropship list.
     const orderContainsDropshipVendors = vendorNames.some(name => dropShipVendors.includes(name));
 
-    // Return the results.
     return res.status(200).json({ vendorNames, orderContainsDropshipVendors });
-    
   } catch (error) {
     console.error('Server error processing order:', error);
     return res.status(500).json({ error: "Internal Server Error" });
